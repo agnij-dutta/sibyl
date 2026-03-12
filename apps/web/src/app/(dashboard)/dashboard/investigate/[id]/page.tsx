@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
 import { useInvestigation } from '@/hooks/use-investigation';
 import { ChatPanel } from '@/components/investigation/ChatPanel';
@@ -19,14 +19,14 @@ export default function InvestigationDetailPage({
   const query = searchParams.get('q') || '';
   const projectId = searchParams.get('project') || '';
   const { investigation, isStreaming, error, startInvestigation } = useInvestigation(projectId);
-  const [started, setStarted] = useState(false);
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (query && !started) {
-      setStarted(true);
+    if (query && !startedRef.current) {
+      startedRef.current = true;
       startInvestigation(query);
     }
-  }, [query, started, startInvestigation]);
+  }, [query, startInvestigation]);
 
   const handleSendFollowUp = (followUpQuery: string) => {
     startInvestigation(followUpQuery);

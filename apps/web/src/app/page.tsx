@@ -92,30 +92,35 @@ function useTypewriter(lines: typeof terminalLines) {
   const [displayed, setDisplayed] = useState<{ text: string; type: string }[]>([]);
   const [lineIdx, setLineIdx] = useState(0);
   const [charIdx, setCharIdx] = useState(0);
-  const [done, setDone] = useState(false);
+  const done = lineIdx >= lines.length;
 
   useEffect(() => {
-    if (lineIdx >= lines.length) { setDone(true); return; }
+    if (lineIdx >= lines.length) return;
     const line = lines[lineIdx];
 
     if (line.type === 'blank') {
-      setDisplayed(p => [...p, { text: '', type: 'blank' }]);
-      const t = setTimeout(() => { setLineIdx(i => i + 1); setCharIdx(0); }, 200);
+      const t = setTimeout(() => {
+        setDisplayed(p => [...p, { text: '', type: 'blank' }]);
+        setLineIdx(i => i + 1);
+        setCharIdx(0);
+      }, 200);
       return () => clearTimeout(t);
     }
 
-    if (charIdx === 0) setDisplayed(p => [...p, { text: '', type: line.type }]);
-
     if (charIdx < line.text.length) {
       const speed = line.type === 'command' ? 28 : 14;
+      const delay = charIdx === 0 ? 0 : speed;
       const t = setTimeout(() => {
         setDisplayed(p => {
+          if (charIdx === 0) {
+            return [...p, { text: line.text.slice(0, 1), type: line.type }];
+          }
           const u = [...p];
           u[u.length - 1] = { text: line.text.slice(0, charIdx + 1), type: line.type };
           return u;
         });
         setCharIdx(c => c + 1);
-      }, speed);
+      }, delay);
       return () => clearTimeout(t);
     }
 
