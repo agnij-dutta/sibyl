@@ -11,11 +11,14 @@
     "dev:ingest": "turbo dev --filter=@sibyl/ingest",
     "db:generate": "turbo db:generate --filter=@sibyl/db",
     "db:push": "turbo db:push --filter=@sibyl/db",
-    "db:studio": "turbo db:studio --filter=@sibyl/db"
+    "db:studio": "turbo db:studio --filter=@sibyl/db",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "turbo": "^2.3.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {

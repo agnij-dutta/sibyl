@@ -35,15 +35,15 @@ export function fingerprint(message: string, stack?: string): string {
  */
 function normalizeMessage(msg: string): string {
   return msg
-    // Hexadecimal addresses (0x1a2b3c)
-    .replace(/0x[0-9a-fA-F]+/g, '<hex>')
-    // Standalone numbers
-    .replace(/\b\d+\b/g, '<num>')
-    // UUIDs (v4 and similar)
+    // UUIDs (v4 and similar) — must run before number replacement
     .replace(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
       '<uuid>',
     )
+    // Hexadecimal addresses (0x1a2b3c)
+    .replace(/0x[0-9a-fA-F]+/g, '<hex>')
+    // Standalone numbers
+    .replace(/\b\d+\b/g, '<num>')
     // File-system-style paths (/foo/bar)
     .replace(/\/[^\s/]+\/[^\s/]+/g, '<path>')
     .trim();
