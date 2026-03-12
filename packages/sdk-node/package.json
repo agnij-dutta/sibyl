@@ -1,0 +1,19 @@
+{
+  "name": "@sibyl/node",
+  "version": "0.1.0",
+  "description": "Sibyl SDK for Node.js - AI-native incident investigation",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  },
+  "keywords": ["observability", "monitoring", "error-tracking", "apm", "ai"],
+  "license": "MIT"
+}

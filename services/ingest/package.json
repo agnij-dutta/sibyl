@@ -1,0 +1,25 @@
+{
+  "name": "@sibyl/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "@hono/node-server": "^1.13.0",
+    "@clickhouse/client": "^1.8.0",
+    "@google/generative-ai": "^0.21.0",
+    "ioredis": "^5.4.0",
+    "drizzle-orm": "^0.37.0",
+    "@sibyl/db": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

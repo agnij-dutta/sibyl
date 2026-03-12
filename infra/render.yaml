@@ -1,0 +1,46 @@
+# ===========================================================================
+# Render Blueprint - Sibyl Ingest Service
+# ===========================================================================
+# Deploy with: render blueprint apply
+# Docs: https://render.com/docs/blueprint-spec
+# ===========================================================================
+
+services:
+  - type: web
+    name: sibyl-ingest
+    runtime: docker
+    repo: https://github.com/sibyl-platform/sibyl
+    dockerfilePath: services/ingest/Dockerfile
+    dockerContext: services/ingest
+    region: oregon
+    plan: starter
+    branch: main
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: '3001'
+      - key: DATABASE_URL
+        sync: false
+      - key: CLICKHOUSE_URL
+        sync: false
+      - key: CLICKHOUSE_DATABASE
+        value: sibyl
+      - key: CLICKHOUSE_USERNAME
+        value: default
+      - key: CLICKHOUSE_PASSWORD
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+    autoDeploy: true
+    numInstances: 1
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetMemoryPercent: 75
+      targetCPUPercent: 70
