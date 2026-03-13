@@ -9,9 +9,9 @@ services:
   - type: web
     name: sibyl-ingest
     runtime: docker
-    repo: https://github.com/sibyl-platform/sibyl
+    repo: https://github.com/agnij-dutta/sibyl
     dockerfilePath: services/ingest/Dockerfile
-    dockerContext: services/ingest
+    dockerContext: .
     region: oregon
     plan: starter
     branch: main
