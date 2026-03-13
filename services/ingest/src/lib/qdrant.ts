@@ -10,29 +10,32 @@ import { config } from '../config.js';
 /** text-embedding-004 produces 768-dimensional vectors. */
 const VECTOR_SIZE = 768;
 
+/** Build headers including API key if configured. */
+function headers(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { 'Content-Type': 'application/json', ...extra };
+  if (config.qdrant.apiKey) {
+    h['api-key'] = config.qdrant.apiKey;
+  }
+  return h;
+}
+
 // ---------------------------------------------------------------------------
 // Collection lifecycle
 // ---------------------------------------------------------------------------
 
-/**
- * Ensure the target Qdrant collection exists, creating it if necessary.
- * Safe to call repeatedly -- idempotent by design.
- */
 export async function ensureCollection(): Promise<void> {
   const url = `${config.qdrant.url}/collections/${config.qdrant.collection}`;
 
   try {
-    const res = await fetch(url, { method: 'GET' });
+    const res = await fetch(url, { method: 'GET', headers: headers() });
 
     if (res.status === 404) {
       const createRes = await fetch(url, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers(),
         body: JSON.stringify({
           vectors: { size: VECTOR_SIZE, distance: 'Cosine' },
-          optimizers_config: {
-            indexing_threshold: 20000,
-          },
+          optimizers_config: { indexing_threshold: 20000 },
         }),
       });
 
@@ -58,16 +61,13 @@ export interface QdrantPoint {
   payload: Record<string, unknown>;
 }
 
-/**
- * Upsert one or more vectors with their payloads.
- */
 export async function upsertVectors(points: QdrantPoint[]): Promise<void> {
   if (points.length === 0) return;
 
   const url = `${config.qdrant.url}/collections/${config.qdrant.collection}/points`;
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers(),
     body: JSON.stringify({ points }),
   });
 
@@ -88,13 +88,6 @@ export interface QdrantSearchResult {
   payload: Record<string, unknown>;
 }
 
-/**
- * Search for the nearest vectors in the collection.
- *
- * @param vector - The query embedding.
- * @param limit  - Maximum number of results (default 50).
- * @param filter - Optional Qdrant filter object.
- */
 export async function searchVectors(
   vector: number[],
   limit = 50,
@@ -113,7 +106,7 @@ export async function searchVectors(
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers(),
     body: JSON.stringify(body),
   });
 

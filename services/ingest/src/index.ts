@@ -72,10 +72,10 @@ serve(
       console.warn('[sibyl-ingest] Qdrant collection setup deferred:', err);
     });
 
-    // Start background workers
-    startEmbeddingWorker();
-    startIncidentDetector();
-    startAlertEvaluator();
+    // Start background workers (fail gracefully if services unavailable)
+    try { startEmbeddingWorker(); } catch (e) { console.warn('[sibyl-ingest] Embedding worker deferred:', e); }
+    try { startIncidentDetector(); } catch (e) { console.warn('[sibyl-ingest] Incident detector deferred:', e); }
+    try { startAlertEvaluator(); } catch (e) { console.warn('[sibyl-ingest] Alert evaluator deferred:', e); }
   },
 );
 
