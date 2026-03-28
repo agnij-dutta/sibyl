@@ -57,12 +57,28 @@ export default function InvestigationDetailPage({
             <Sparkles size={18} className="text-[var(--sibyl)] animate-pulse" />
           )}
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-semibold">Investigation</h1>
           <p className="text-[13px] text-muted-foreground capitalize">
             {investigation?.status || 'Starting...'}
           </p>
         </div>
+        {typeof investigation?.confidence === 'number' && investigation.status === 'completed' && (
+          <div className={cn(
+            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl ring-1 text-xs font-mono font-semibold',
+            investigation.confidence >= 75 ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20' :
+            investigation.confidence >= 40 ? 'bg-amber-500/10 text-amber-400 ring-amber-500/20' :
+            'bg-red-500/10 text-red-400 ring-red-500/20'
+          )}>
+            <div className="relative w-10 h-1.5 bg-current/20 rounded-full overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 bg-current rounded-full"
+                style={{ width: `${investigation.confidence}%` }}
+              />
+            </div>
+            {investigation.confidence}% confidence
+          </div>
+        )}
       </div>
 
       {/* Main content: ChatPanel + EvidenceSidebar */}
@@ -73,6 +89,8 @@ export default function InvestigationDetailPage({
           status={investigation?.status || null}
           rootCause={investigation?.rootCause}
           confidence={investigation?.confidence}
+          suggestedFixes={investigation?.suggestedFixes}
+          investigationId={investigation?.id}
           error={error}
           onSendFollowUp={handleSendFollowUp}
         />

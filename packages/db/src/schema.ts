@@ -195,6 +195,23 @@ export const alertRules = pgTable('alert_rules', {
     .$onUpdateFn(() => new Date()),
 });
 
+export const investigationFeedback = pgTable('investigation_feedback', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  investigationId: text('investigation_id')
+    .notNull()
+    .references(() => investigations.id),
+  userId: text('user_id')
+    .references(() => users.id),
+  rating: text('rating').notNull(), // 'helpful' | 'not_helpful'
+  rootCauseAccurate: boolean('root_cause_accurate'),
+  comment: text('comment'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const deploys = pgTable('deploys', {
   id: text('id')
     .primaryKey()
@@ -250,10 +267,22 @@ export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
   }),
 }));
 
-export const investigationsRelations = relations(investigations, ({ one }) => ({
+export const investigationsRelations = relations(investigations, ({ one, many }) => ({
   project: one(projects, {
     fields: [investigations.projectId],
     references: [projects.id],
+  }),
+  feedback: many(investigationFeedback),
+}));
+
+export const investigationFeedbackRelations = relations(investigationFeedback, ({ one }) => ({
+  investigation: one(investigations, {
+    fields: [investigationFeedback.investigationId],
+    references: [investigations.id],
+  }),
+  user: one(users, {
+    fields: [investigationFeedback.userId],
+    references: [users.id],
   }),
 }));
 

@@ -9,7 +9,7 @@
 
 import { queryClickHouse } from './clickhouse.js';
 import { searchVectors } from './qdrant.js';
-import { generateEmbedding } from './gemini.js';
+import { generateEmbedding, rerankWithGemini } from './gemini.js';
 import { correlateDeployAndErrors, detectServiceCascade } from './correlator.js';
 import { getDb } from '@sibyl/db';
 import { deploys, incidents } from '@sibyl/db';
@@ -199,15 +199,41 @@ async function getErrorSpans(projectId: string): Promise<any[]> {
   `);
 }
 
+const SIMILARITY_THRESHOLD = 0.7;
+
 async function getSemanticallySimilarEvents(projectId: string, query: string): Promise<any[]> {
   if (!config.gemini.apiKey) return [];
 
   try {
     const queryEmbedding = await generateEmbedding(query);
-    const results = await searchVectors(queryEmbedding, 20, {
+    const results = await searchVectors(queryEmbedding, 30, {
       must: [{ key: 'project_id', match: { value: projectId } }],
     });
-    return results;
+
+    // Filter by similarity threshold
+    const filtered = results.filter((r: any) => r.score >= SIMILARITY_THRESHOLD);
+
+    if (filtered.length === 0) return [];
+
+    // Rerank with Gemini for better relevance ordering
+    try {
+      const candidateTexts = filtered.map((r: any) => {
+        const p = r.payload || {};
+        return `[${p.level}] ${p.service}: ${(p.message || '').slice(0, 200)}`;
+      });
+
+      const reranked = await rerankWithGemini(query, candidateTexts);
+
+      // Return reranked results, dropping any with very low relevance
+      return reranked
+        .filter(r => r.relevanceScore >= 0.4)
+        .slice(0, 15)
+        .map(r => filtered[r.index])
+        .filter(Boolean);
+    } catch {
+      // Fallback to similarity-filtered results if reranking fails
+      return filtered.slice(0, 15);
+    }
   } catch {
     return [];
   }

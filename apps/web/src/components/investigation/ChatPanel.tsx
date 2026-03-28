@@ -27,8 +27,33 @@ interface ChatPanelProps {
   status: 'running' | 'completed' | 'failed' | null;
   rootCause?: string;
   confidence?: number;
+  suggestedFixes?: string[];
+  investigationId?: string;
   error?: string | null;
   onSendFollowUp?: (query: string) => void;
+}
+
+function ConfidenceBadge({ confidence }: { confidence: number }) {
+  const level = confidence >= 75 ? 'high' : confidence >= 40 ? 'medium' : 'low';
+  const colors = {
+    high: 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20',
+    medium: 'bg-amber-500/10 text-amber-400 ring-amber-500/20',
+    low: 'bg-red-500/10 text-red-400 ring-red-500/20',
+  };
+  const labels = { high: 'High', medium: 'Medium', low: 'Low' };
+
+  return (
+    <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg ring-1 text-[11px] font-mono font-semibold', colors[level])}>
+      <div className="relative w-8 h-1.5 bg-current/20 rounded-full overflow-hidden">
+        <div
+          className="absolute inset-y-0 left-0 bg-current rounded-full transition-all duration-500"
+          style={{ width: `${confidence}%` }}
+        />
+      </div>
+      <span>{confidence}%</span>
+      <span className="opacity-60">{labels[level]}</span>
+    </div>
+  );
 }
 
 export function ChatPanel({
@@ -37,11 +62,14 @@ export function ChatPanel({
   status,
   rootCause,
   confidence,
+  suggestedFixes,
+  investigationId,
   error,
   onSendFollowUp,
 }: ChatPanelProps) {
   const [followUp, setFollowUp] = useState('');
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [feedbackSent, setFeedbackSent] = useState<'helpful' | 'not_helpful' | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when streaming
@@ -55,6 +83,24 @@ export function ChatPanel({
     navigator.clipboard.writeText(text);
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  const sendFeedback = async (rating: 'helpful' | 'not_helpful') => {
+    if (!investigationId || feedbackSent) return;
+    setFeedbackSent(rating);
+    try {
+      await fetch('/api/investigations/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          investigationId,
+          rating,
+          rootCauseAccurate: rating === 'helpful',
+        }),
+      });
+    } catch {
+      // Silent fail — feedback is non-critical
+    }
   };
 
   return (
@@ -108,10 +154,32 @@ export function ChatPanel({
                 >
                   {copiedIdx === i ? <Check size={12} className="text-[var(--success)]" /> : <Copy size={12} />}
                 </button>
-                <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Helpful">
+                <button
+                  onClick={() => sendFeedback('helpful')}
+                  disabled={!!feedbackSent}
+                  className={cn(
+                    'p-1.5 rounded-lg transition-colors',
+                    feedbackSent === 'helpful'
+                      ? 'bg-emerald-500/10 text-emerald-400'
+                      : 'hover:bg-muted text-muted-foreground hover:text-foreground',
+                    feedbackSent && feedbackSent !== 'helpful' && 'opacity-30',
+                  )}
+                  title="Helpful"
+                >
                   <ThumbsUp size={12} />
                 </button>
-                <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Not helpful">
+                <button
+                  onClick={() => sendFeedback('not_helpful')}
+                  disabled={!!feedbackSent}
+                  className={cn(
+                    'p-1.5 rounded-lg transition-colors',
+                    feedbackSent === 'not_helpful'
+                      ? 'bg-red-500/10 text-red-400'
+                      : 'hover:bg-muted text-muted-foreground hover:text-foreground',
+                    feedbackSent && feedbackSent !== 'not_helpful' && 'opacity-30',
+                  )}
+                  title="Not helpful"
+                >
                   <ThumbsDown size={12} />
                 </button>
               </div>
@@ -140,13 +208,26 @@ export function ChatPanel({
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle size={16} className="text-[var(--success)]" />
               <span className="text-sm font-semibold">Root Cause Identified</span>
-              {confidence && (
-                <span className="ml-auto text-[11px] font-mono bg-[var(--success)]/10 text-[var(--success)] px-2 py-0.5 rounded-lg">
-                  {confidence}% confidence
-                </span>
+              {typeof confidence === 'number' && (
+                <div className="ml-auto">
+                  <ConfidenceBadge confidence={confidence} />
+                </div>
               )}
             </div>
             <p className="text-sm leading-relaxed">{rootCause}</p>
+            {suggestedFixes && suggestedFixes.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border/20">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Suggested Fixes</span>
+                <div className="mt-2 space-y-1.5">
+                  {suggestedFixes.map((fix, i) => (
+                    <div key={i} className="flex gap-2 text-sm">
+                      <span className="text-[var(--sibyl)] font-mono text-[11px] mt-0.5 shrink-0">{i + 1}.</span>
+                      <span>{fix}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

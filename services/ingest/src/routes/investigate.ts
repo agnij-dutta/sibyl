@@ -11,9 +11,18 @@ import { streamSSE } from 'hono/streaming';
 import { getDb } from '@sibyl/db';
 import { investigations, projects } from '@sibyl/db';
 import { eq } from 'drizzle-orm';
-import { streamReasoning } from '../lib/gemini.js';
+import { streamReasoning, extractStructuredResult } from '../lib/gemini.js';
 import { buildInvestigationContext } from '../lib/context-builder.js';
 import { config } from '../config.js';
+
+// ---------------------------------------------------------------------------
+// Types for structured extraction
+// ---------------------------------------------------------------------------
+
+interface InvestigationMessages {
+  role: string;
+  content: string;
+}
 
 const investigate = new Hono();
 
@@ -24,6 +33,7 @@ const investigate = new Hono();
 interface InvestigateBody {
   query: string;
   projectId: string;
+  investigationId?: string; // For follow-up queries — re-fetches context
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +70,7 @@ investigate.post('/investigate', async (c) => {
     );
   }
 
-  const { query, projectId } = body;
+  const { query, projectId, investigationId: existingInvestigationId } = body;
 
   if (!query || typeof query !== 'string' || query.trim().length === 0) {
     return c.json(
@@ -92,25 +102,52 @@ investigate.post('/investigate', async (c) => {
     );
   }
 
-  // --- Create investigation record ---
-  const [investigation] = await db
-    .insert(investigations)
-    .values({
-      projectId,
-      query: query.trim(),
-      status: 'running',
-      messages: [],
-    })
-    .returning({ id: investigations.id });
+  // --- Create or reuse investigation record ---
+  let investigationId: string;
+  let previousMessages: InvestigationMessages[] = [];
 
-  if (!investigation) {
-    return c.json(
-      { error: 'Internal Server Error', message: 'Failed to create investigation record.' },
-      500,
-    );
+  if (existingInvestigationId) {
+    // Follow-up query — reuse existing investigation, re-fetch context
+    const existing = await db
+      .select()
+      .from(investigations)
+      .where(eq(investigations.id, existingInvestigationId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      investigationId = existingInvestigationId;
+      previousMessages = (existing[0].messages || []) as InvestigationMessages[];
+      await db
+        .update(investigations)
+        .set({ status: 'running' })
+        .where(eq(investigations.id, investigationId));
+    } else {
+      // Fallback: create new
+      const [inv] = await db
+        .insert(investigations)
+        .values({ projectId, query: query.trim(), status: 'running', messages: [] })
+        .returning({ id: investigations.id });
+      investigationId = inv!.id;
+    }
+  } else {
+    const [investigation] = await db
+      .insert(investigations)
+      .values({
+        projectId,
+        query: query.trim(),
+        status: 'running',
+        messages: [],
+      })
+      .returning({ id: investigations.id });
+
+    if (!investigation) {
+      return c.json(
+        { error: 'Internal Server Error', message: 'Failed to create investigation record.' },
+        500,
+      );
+    }
+    investigationId = investigation.id;
   }
-
-  const investigationId = investigation.id;
 
   // --- Check if Gemini is configured ---
   if (!config.gemini.apiKey) {
@@ -180,16 +217,35 @@ investigate.post('/investigate', async (c) => {
         });
       }
 
+      // --- Extract structured fields via Gemini ---
+      let rootCause: string | undefined;
+      let confidence: number | undefined;
+      let suggestedFixes: string[] = [];
+
+      try {
+        const structured = await extractStructuredResult(fullResponse);
+        rootCause = structured.rootCause;
+        confidence = structured.confidence;
+        suggestedFixes = structured.suggestedFixes;
+      } catch (extractErr) {
+        console.warn('[investigate] Structured extraction failed:', extractErr);
+      }
+
       // --- Persist the completed investigation ---
+      const updatedMessages = [
+        ...previousMessages,
+        { role: 'user', content: query.trim() },
+        { role: 'assistant', content: fullResponse },
+      ];
+
       await db
         .update(investigations)
         .set({
           status: 'completed',
           summary: fullResponse.slice(0, 500),
-          messages: [
-            { role: 'user', content: query.trim() },
-            { role: 'assistant', content: fullResponse },
-          ],
+          rootCause: rootCause || null,
+          confidence: confidence ?? null,
+          messages: updatedMessages,
         })
         .where(eq(investigations.id, investigationId));
 
@@ -198,6 +254,9 @@ investigate.post('/investigate', async (c) => {
         data: JSON.stringify({
           investigationId,
           status: 'completed',
+          rootCause,
+          confidence,
+          suggestedFixes,
         }),
       });
     } catch (err) {

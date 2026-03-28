@@ -8,9 +8,11 @@
 // ---------------------------------------------------------------------------
 
 import { getDb } from '@sibyl/db';
-import { incidents } from '@sibyl/db';
+import { incidents, investigations } from '@sibyl/db';
 import { eq, and } from 'drizzle-orm';
 import { queryClickHouse } from '../lib/clickhouse.js';
+import { buildInvestigationContext } from '../lib/context-builder.js';
+import { streamReasoning, extractStructuredResult } from '../lib/gemini.js';
 import { config } from '../config.js';
 
 const INTERVAL_MS = 60_000; // 1 minute
@@ -109,8 +111,92 @@ export async function detectIncidents(): Promise<number> {
   lastRunAt = new Date().toISOString();
   if (created > 0) {
     console.log(`[incident-detector] Created ${created} new incidents, updated ${groups.length - created}`);
+
+    // Auto-trigger investigation for new high-severity incidents
+    for (const group of groups) {
+      if (group.level === 'error' && Number(group.count) >= 5) {
+        triggerAutoInvestigation(group.project_id, group.latest_message, group.fingerprint).catch(err => {
+          console.warn(`[incident-detector] Auto-investigation failed for ${group.fingerprint}:`, err);
+        });
+      }
+    }
   }
   return created;
+}
+
+/**
+ * Automatically start an AI investigation when a significant new incident is detected.
+ * Runs in the background — failures are non-fatal.
+ */
+async function triggerAutoInvestigation(
+  projectId: string,
+  errorMessage: string,
+  fingerprint: string,
+): Promise<void> {
+  if (!config.gemini.apiKey) return;
+
+  const db = getDb(config.database.url);
+  const query = `Investigate recurring error: ${errorMessage.slice(0, 200)}`;
+
+  const [investigation] = await db
+    .insert(investigations)
+    .values({
+      projectId,
+      query,
+      status: 'running',
+      messages: [],
+    })
+    .returning({ id: investigations.id });
+
+  if (!investigation) return;
+
+  try {
+    const context = await buildInvestigationContext(projectId, query);
+
+    const systemPrompt = `You are Sibyl, an AI incident investigator. This investigation was auto-triggered by a recurring error pattern (fingerprint: ${fingerprint}). Analyze the evidence and provide a concise root cause analysis with actionable fixes.`;
+
+    const userPrompt = [
+      `# Auto-triggered Investigation`,
+      query,
+      '',
+      context.promptContext,
+    ].filter(Boolean).join('\n');
+
+    let fullResponse = '';
+    for await (const chunk of streamReasoning(systemPrompt, userPrompt)) {
+      fullResponse += chunk;
+    }
+
+    let rootCause: string | null = null;
+    let confidence: number | null = null;
+    try {
+      const structured = await extractStructuredResult(fullResponse);
+      rootCause = structured.rootCause;
+      confidence = structured.confidence;
+    } catch { /* non-fatal */ }
+
+    await db
+      .update(investigations)
+      .set({
+        status: 'completed',
+        summary: fullResponse.slice(0, 500),
+        rootCause,
+        confidence,
+        messages: [
+          { role: 'user', content: query },
+          { role: 'assistant', content: fullResponse },
+        ],
+      })
+      .where(eq(investigations.id, investigation.id));
+
+    console.log(`[incident-detector] Auto-investigation completed for fingerprint ${fingerprint}`);
+  } catch (err) {
+    await db
+      .update(investigations)
+      .set({ status: 'failed' })
+      .where(eq(investigations.id, investigation.id));
+    throw err;
+  }
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;

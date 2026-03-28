@@ -27,6 +27,7 @@ interface Investigation {
   correlations: string[];
   rootCause?: string;
   confidence?: number;
+  suggestedFixes?: string[];
 }
 
 const INGEST_URL = process.env.NEXT_PUBLIC_INGEST_URL || 'http://localhost:3001';
@@ -60,10 +61,16 @@ export function useInvestigation(projectId: string) {
     try {
       abortRef.current = new AbortController();
 
+      const investigationPayload: Record<string, string> = { query, projectId };
+      // For follow-up queries, pass the existing investigationId to re-fetch context
+      if (investigation?.id) {
+        investigationPayload.investigationId = investigation.id;
+      }
+
       const response = await fetch(`${INGEST_URL}/v1/investigate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, projectId }),
+        body: JSON.stringify(investigationPayload),
         signal: abortRef.current.signal,
       });
 
@@ -145,7 +152,8 @@ export function useInvestigation(projectId: string) {
                     id: parsed.investigationId || prev.id,
                     status: 'completed' as const,
                     rootCause: parsed.rootCause || prev.rootCause,
-                    confidence: parsed.confidence || prev.confidence,
+                    confidence: parsed.confidence ?? prev.confidence,
+                    suggestedFixes: parsed.suggestedFixes || prev.suggestedFixes,
                   } : prev);
                   break;
                 }
